@@ -1,0 +1,21 @@
+# Web framework & server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.20          # untuk unggahan file multipart (CSV)
+
+# Konfigurasi
+pydantic-settings==2.7.1
+
+# Kompatibilitas artefak model (harus cocok dengan versi di .joblib)
+scikit-learn==1.6.1
+joblib==1.4.2
+numpy==2.2.2
+pandas==2.2.3
+
+# Preprocessing teks bahasa Indonesia (sesuai eksperimen Colab)
+Sastrawi==1.0.1
+nltk==3.9.1
+
+# Pengujian
+pytest==8.3.4
+httpx==0.28.1
