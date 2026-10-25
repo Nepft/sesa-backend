@@ -26,6 +26,13 @@ def test_predict_text_empty_rejected(client_with_model):
     assert resp.status_code == 422
 
 
+def test_predict_text_whitespace_only_rejected(client_with_model):
+    """Teks yang hanya spasi/tab/newline dianggap kosong dan ditolak (H1)."""
+    for blank in ["   ", "\t\t", "\n \n", " \t \n "]:
+        resp = client_with_model.post("/predict", json={"text": blank})
+        assert resp.status_code == 422, f"input {blank!r} seharusnya ditolak"
+
+
 def test_predict_text_missing_field_rejected(client_with_model):
     resp = client_with_model.post("/predict", json={})
     assert resp.status_code == 422

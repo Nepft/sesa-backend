@@ -16,6 +16,7 @@ bukti kesetaraan dengan eksperimen (lihat RULES.md §2).
 from __future__ import annotations
 
 import re
+import threading
 from pathlib import Path
 
 import pandas as pd
@@ -135,6 +136,10 @@ class TextPreprocessor:
         self.stop_words = self._load_stopwords(stopwords_path)
         # Stemmer Sastrawi diinisialisasi malas (mahal) saat pertama dipakai.
         self._stemmer = None
+        # Stemmer Sastrawi (CachedStemmer) menyimpan cache mutabel di dalam
+        # objeknya, sehingga tidak aman dipakai bersamaan dari banyak thread.
+        # Kunci ini menjaga inisialisasi malas dan setiap pemanggilan stem().
+        self._stem_lock = threading.Lock()
 
     # -- pemuatan resource -------------------------------------------------
     @staticmethod
@@ -156,9 +161,11 @@ class TextPreprocessor:
     def stemmer(self):
         """Stemmer Sastrawi (dibuat sekali, dipakai ulang)."""
         if self._stemmer is None:
-            from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
+            with self._stem_lock:
+                if self._stemmer is None:
+                    from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
 
-            self._stemmer = StemmerFactory().create_stemmer()
+                    self._stemmer = StemmerFactory().create_stemmer()
         return self._stemmer
 
     # -- tahapan pemrosesan ------------------------------------------------
@@ -194,8 +201,12 @@ class TextPreprocessor:
         # 5. Stopword removal (+ noise khusus) lalu perbaikan slang
         no_stop = self._remove_stopwords(tokens)
         fixed_slang = self._fix_slang(no_stop)
-        # 6. Stemming
-        return self.stemmer.stem(fixed_slang)
+        # 6. Stemming. Ambil stemmer lewat property (menginisialisasi bila
+        # perlu) sebelum mengambil kunci, agar tidak terjadi deadlock, lalu
+        # kunci pemanggilan stem() karena cache mutabelnya tidak aman antar-thread.
+        stemmer = self.stemmer
+        with self._stem_lock:
+            return stemmer.stem(fixed_slang)
 
     def preprocess_many(self, texts: list) -> list:
         """Pra-proses daftar teks secara berurutan (mempertahankan urutan input)."""

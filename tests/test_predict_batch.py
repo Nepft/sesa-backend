@@ -48,6 +48,29 @@ def test_batch_wrong_header_rejected(client_with_model):
     assert "content" in resp.json()["detail"]
 
 
+def test_batch_column_match_is_case_insensitive(client_with_model):
+    """Header kolom teks diterima tanpa memandang huruf besar/kecil (M4)."""
+    for header in ["Content", "CONTENT", "cOnTeNt"]:
+        csv_content = f"{header}\naplikasi bagus\n"
+        resp = client_with_model.post(
+            "/predict/batch", files=csv_upload(csv_content)
+        )
+        assert resp.status_code == 200, f"header {header!r} seharusnya diterima"
+        assert resp.json()["total"] == 1
+
+
+def test_batch_semicolon_delimiter_supported(client_with_model):
+    """CSV dengan pemisah titik-koma (gaya Colab) tetap terbaca (L1)."""
+    csv_content = "content;rating\naplikasi bagus;5\n"
+    resp = client_with_model.post(
+        "/predict/batch", files=csv_upload(csv_content)
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert body["results"][0]["row"] == 2
+
+
 def test_batch_header_only_rejected(client_with_model):
     csv_content = "content\n"
     resp = client_with_model.post(
@@ -67,8 +90,9 @@ def test_batch_not_csv_rejected(client_with_model):
 def test_batch_too_many_rows_rejected(client_with_model, monkeypatch):
     from app.core.config import get_settings
 
-    # Turunkan batas baris agar mudah diuji.
-    get_settings().max_csv_rows = 2
+    # Turunkan batas baris agar mudah diuji; monkeypatch mengembalikan nilai
+    # aslinya otomatis setelah tes selesai.
+    monkeypatch.setattr(get_settings(), "max_csv_rows", 2)
     csv_content = "content\nbagus\njelek\nnetral\n"
     resp = client_with_model.post(
         "/predict/batch", files=csv_upload(csv_content)

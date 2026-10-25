@@ -56,6 +56,11 @@ cp .env.example .env
 | `CORS_ORIGINS` | `["http://localhost:5173"]` | Asal origin yang diizinkan (JSON list) |
 | `LOG_LEVEL` | `INFO` | Tingkat log |
 
+Satu variabel dibaca langsung dari environment proses (bukan dari `.env`,
+karena dipakai untuk menemukan `.env` itu sendiri): `SESA_ENV_FILE` — lokasi
+alternatif berkas `.env`, untuk deployment yang menyimpan konfigurasi di luar
+tree repository. Bila tidak diset, memakai `.env` di root repository.
+
 CORS dibatasi ke origin di `CORS_ORIGINS`. **Jangan** memakai wildcard (`*`) di produksi.
 
 ---
@@ -148,10 +153,11 @@ Analisis sentimen satu teks ulasan.
 Analisis sentimen banyak ulasan dari file CSV (multipart upload, field `file`).
 
 **Syarat file CSV**
-- Berformat CSV.
-- Memiliki kolom teks (nama kolom sesuai `CSV_TEXT_COLUMN`, default `content`).
+- Berformat CSV, memakai pemisah koma (`,`) atau titik-koma (`;`) — dideteksi otomatis dari baris header (gaya Colab memakai `;`).
+- Memiliki kolom teks (nama kolom sesuai `CSV_TEXT_COLUMN`, default `content`); pencocokan tidak memandang huruf besar/kecil.
 - Baris kosong/tidak valid **dilewati**, tidak menggagalkan seluruh batch.
 - Nomor baris disertakan agar hasil mudah dicocokkan dengan input.
+- Ukuran file dan jumlah baris dibatasi sebelum diproses (lihat `MAX_UPLOAD_SIZE_BYTES`, `MAX_CSV_ROWS`).
 
 **Contoh file `ulasan.csv`**
 ```csv

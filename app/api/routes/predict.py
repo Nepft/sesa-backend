@@ -19,6 +19,7 @@ from fastapi import (
     UploadFile,
     status,
 )
+from starlette.concurrency import run_in_threadpool
 
 from app.api.dependencies import get_prediction_service
 from app.schemas.request import PredictTextRequest
@@ -56,7 +57,7 @@ def predict_text(
 
     Mengembalikan label 'Positif' atau 'Negatif' sesuai pemetaan model final.
     """
-    # logger.info("Request POST /predict diterima dari Flutter atau klien API")
+    logger.info("Request POST /predict diterima dari Flutter atau klien API")
     _ensure_model_ready(service)
     try:
         label = service.predict_one(body.text)
@@ -73,6 +74,101 @@ def predict_text(
             detail="Terjadi kesalahan internal.",
         )
     return PredictTextResponse(text=body.text, label=label)
+
+
+def _detect_delimiter(header_line: str) -> str:
+    """Tentukan pemisah kolom dari baris header (koma atau titik-koma).
+
+    Eksperimen Colab memakai ';' sementara unggahan web umumnya memakai ','.
+    Mendeteksi dari baris header agar keduanya diterima tanpa menebak-nebak.
+    """
+    return ";" if header_line.count(";") > header_line.count(",") else ","
+
+
+def _parse_csv_text(
+    raw: bytes,
+    settings,
+    service: PredictionService,
+) -> BatchPredictResponse:
+    """Decode, parse, dan prediksi CSV. Berjalan di threadpool (blocking).
+
+    Menaikkan HTTPException untuk galat validasi; pemanggil memastikan ini
+    tidak menabrak event loop.
+    """
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File bukan CSV yang valid (encoding tidak didukung).",
+        )
+
+    # Deteksi pemisah dari baris pertama sebelum parse penuh.
+    first_line = text.splitlines()[0] if text.splitlines() else ""
+    delimiter = _detect_delimiter(first_line)
+
+    try:
+        rows = list(csv.reader(io.StringIO(text), delimiter=delimiter))
+    except csv.Error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File bukan CSV yang valid.",
+        )
+
+    if not rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File tidak berisi data.",
+        )
+
+    header = [h.strip() for h in rows[0]]
+    # Pencocokan tanpa memandang huruf besar/kecil, konsisten dengan parser CSV
+    # pada klien Flutter.
+    text_col = settings.csv_text_column.lower()
+    header_lower = [h.lower() for h in header]
+    if text_col not in header_lower:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Kolom '{settings.csv_text_column}' tidak ditemukan pada file CSV.",
+        )
+    col_index = header_lower.index(text_col)
+
+    data_rows = rows[1:]
+    if len(data_rows) > settings.max_csv_rows:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Jumlah baris melebihi batas maksimal {settings.max_csv_rows}.",
+        )
+    if not data_rows:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File tidak berisi baris data.",
+        )
+
+    valid_texts: list[str] = []
+    valid_rows: list[int] = []
+    skipped: list[BatchSkippedItem] = []
+
+    for offset, row in enumerate(data_rows):
+        row_number = offset + 2  # +2: header = baris 1, data mulai baris 2
+        value = row[col_index].strip() if col_index < len(row) else ""
+        if not value:
+            skipped.append(
+                BatchSkippedItem(row=row_number, reason=_REASON_INVALID_ROW)
+            )
+            continue
+        valid_texts.append(value)
+        valid_rows.append(row_number)
+
+    results: list[BatchResultItem] = []
+    if valid_texts:
+        labels = service.predict_many(valid_texts)
+        for row_number, label in zip(valid_rows, labels):
+            results.append(BatchResultItem(row=row_number, label=label))
+
+    return BatchPredictResponse(
+        total=len(results), results=results, skipped=skipped
+    )
 
 
 @router.post("/batch", response_model=BatchPredictResponse)
@@ -104,102 +200,47 @@ async def predict_batch(
             detail="File harus berformat CSV.",
         )
 
-    # --- Baca isi file dengan batas ukuran ---
-    raw = await file.read()
+    # --- Baca isi file per-blok, berhenti begitu melewati batas ukuran ---
+    # Membaca bertahap agar file besar tidak sempat ter-buffer penuh di memori
+    # sebelum ditolak (batas keamanan).
     max_size = settings.max_upload_size_bytes
-    if len(raw) > max_size:
+    buffer = bytearray()
+    too_large = False
+    while True:
+        chunk = await file.read(1024 * 1024)  # blok 1 MiB
+        if not chunk:
+            break
+        buffer.extend(chunk)
+        if len(buffer) > max_size:
+            too_large = True
+            break
+    if too_large:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=f"Ukuran file melebihi batas maksimal {max_size} byte.",
         )
+    raw = bytes(buffer)
     if not raw:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="File kosong.",
         )
 
-    # --- Decode teks (toleran terhadap BOM UTF-8) ---
+    # --- Decode, parse, dan prediksi di threadpool agar tidak memblokir loop ---
     try:
-        text = raw.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File bukan CSV yang valid (encoding tidak didukung).",
+        return await run_in_threadpool(
+            _parse_csv_text, raw, settings, service
         )
-
-    # --- Parse CSV ---
-    reader = csv.reader(io.StringIO(text))
-    try:
-        rows = list(reader)
-    except csv.Error:
+    except ModelNotReadyError:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File bukan CSV yang valid.",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Model belum siap. Coba lagi nanti.",
         )
-
-    if not rows:
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("Kesalahan internal saat prediksi batch")
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File tidak berisi data.",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Terjadi kesalahan internal.",
         )
-
-    header = [h.strip() for h in rows[0]]
-    text_col = settings.csv_text_column
-    if text_col not in header:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Kolom '{text_col}' tidak ditemukan pada file CSV.",
-        )
-    col_index = header.index(text_col)
-
-    data_rows = rows[1:]
-    if len(data_rows) > settings.max_csv_rows:
-        raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"Jumlah baris melebihi batas maksimal {settings.max_csv_rows}.",
-        )
-    if not data_rows:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="File tidak berisi baris data.",
-        )
-
-    # --- Kumpulkan teks valid & catat baris yang dilewati ---
-    valid_texts: list[str] = []
-    valid_rows: list[int] = []
-    skipped: list[BatchSkippedItem] = []
-
-    for offset, row in enumerate(data_rows):
-        row_number = offset + 2  # +2: header = baris 1, data mulai baris 2
-        value = row[col_index].strip() if col_index < len(row) else ""
-        if not value:
-            skipped.append(
-                BatchSkippedItem(row=row_number, reason=_REASON_INVALID_ROW)
-            )
-            continue
-        valid_texts.append(value)
-        valid_rows.append(row_number)
-
-    # --- Prediksi seluruh baris valid sekaligus (batch) ---
-    results: list[BatchResultItem] = []
-    if valid_texts:
-        try:
-            labels = service.predict_many(valid_texts)
-        except ModelNotReadyError:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Model belum siap. Coba lagi nanti.",
-            )
-        except Exception:
-            logger.exception("Kesalahan internal saat prediksi batch")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Terjadi kesalahan internal.",
-            )
-
-        for row_number, label in zip(valid_rows, labels):
-            results.append(BatchResultItem(row=row_number, label=label))
-
-    return BatchPredictResponse(
-        total=len(results), results=results, skipped=skipped
-    )

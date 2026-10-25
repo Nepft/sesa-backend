@@ -3,6 +3,7 @@
 Semua nilai dibaca dari environment variable (atau berkas `.env`) sehingga
 tidak ada path absolut maupun secret yang di-hardcode di kode sumber.
 """
+import os
 from functools import lru_cache
 from pathlib import Path
 
@@ -12,12 +13,18 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Root repository (dua tingkat di atas berkas konfigurasi ini: app/core/config.py)
 BASE_DIR = Path(__file__).resolve().parents[2]
 
+# Lokasi berkas .env dapat dioverride lewat SESA_ENV_FILE (mis. pada deployment
+# yang menyimpan konfigurasi di luar tree repo). Bila tidak diset, memakai .env
+# di root repository. Nilai ini dibaca dari environment proses, bukan dari .env,
+# karena dibutuhkan untuk menemukan .env itu sendiri.
+ENV_FILE = Path(os.environ.get("SESA_ENV_FILE") or (BASE_DIR / ".env"))
+
 
 class Settings(BaseSettings):
     """Pengaturan layanan yang divisasi dari environment."""
 
     model_config = SettingsConfigDict(
-        env_file=BASE_DIR / ".env",
+        env_file=ENV_FILE,
         env_file_encoding="utf-8",
         extra="ignore",
     )
