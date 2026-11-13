@@ -24,7 +24,12 @@ def get_health() -> HealthResponse:
 @router.get(
     "/ready",
     response_model=ReadyResponse,
-    responses={status.HTTP_503_SERVICE_UNAVAILABLE: {"model": "not_ready"}},
+    responses={
+        status.HTTP_503_SERVICE_UNAVAILABLE: {
+            "model": ReadyResponse,
+            "description": "Model belum siap.",
+        }
+    },
 )
 def get_ready(
     response: Response,
