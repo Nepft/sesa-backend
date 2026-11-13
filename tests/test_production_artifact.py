@@ -43,8 +43,12 @@ def test_production_artifact_labels_match_contract(production_service):
 
 def test_production_artifact_predicts_known_sentiment(production_service):
     """Prediksi terhadap ulasan berlabel jelas harus konsisten."""
-    pos = production_service.predict_one("game nya sangat bagus dan seru Recommended")
-    neg = production_service.predict_one("aplikasi ini jelek buruk sekali payah")
+    pos = production_service.predict_one(
+        "game nya sangat bagus dan seru Recommended"
+    ).label
+    neg = production_service.predict_one(
+        "aplikasi ini jelek buruk sekali payah"
+    ).label
     assert pos in {"Positif", "Negatif"}
     assert neg in {"Positif", "Negatif"}
     assert pos != neg
@@ -52,7 +56,18 @@ def test_production_artifact_predicts_known_sentiment(production_service):
 
 def test_production_artifact_batch_preserves_order(production_service):
     texts = ["bagus sekali", "jelek sekali", "penasaran dan mantap"]
-    labels = production_service.predict_many(texts)
-    assert len(labels) == len(texts)
-    for label in labels:
-        assert label in {"Negatif", "Positif"}
+    predictions = production_service.predict_many(texts)
+    assert len(predictions) == len(texts)
+    for prediction in predictions:
+        assert prediction.label in {"Negatif", "Positif"}
+
+
+def test_production_artifact_confidence_from_predict_proba(production_service):
+    """Artefak baru (SVC probability=True) menyediakan persentase per label."""
+    prediction = production_service.predict_one("game nya sangat bagus sekali")
+    assert prediction.confidence is not None
+    assert set(prediction.confidence.keys()) == {"Negatif", "Positif"}
+    for value in prediction.confidence.values():
+        assert 0.0 <= value <= 100.0
+        assert round(value, 1) == value
+    assert sum(prediction.confidence.values()) == pytest.approx(100, abs=0.15)

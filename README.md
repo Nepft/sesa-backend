@@ -67,7 +67,9 @@ CORS dibatasi ke origin di `CORS_ORIGINS`. **Jangan** memakai wildcard (`*`) di 
 
 ## Menyiapkan Artefak Model
 
-Artefak model **tidak di-commit** ke repository (lihat `.gitignore`). Untuk menyiapkannya:
+Artefak model `model/sesa_model.joblib` **ikut ter-commit** ke repository;
+pola `model/*.joblib` di `.gitignore` hanya mengabaikan berkas `.joblib` baru
+agar tidak masuk tanpa sengaja. Untuk memperbaruinya:
 
 1. Buka notebook eksperimen di **Google Colab** dan jalankan hingga selesai (termasuk
    pelatihan SVM pada data seimbang SMOTE + Tomek).
@@ -76,7 +78,8 @@ Artefak model **tidak di-commit** ke repository (lihat `.gitignore`). Untuk meny
 3. Unduh berkas tersebut dan letakkan di folder `model/sesa_model.joblib`.
 
 Artefak adalah `dict` berisi: `vectorizer` (TfidfVectorizer terlatih), `model`
-(SVM terlatih), `labels` (pemetaan label), dan `sklearn_version`.
+(SVM terlatih; `probability=True` pada saat pelatihan menghasilkan field
+`confidence` pada respons), `labels` (pemetaan label), dan `sklearn_version`.
 
 Jika artefak tidak ada atau gagal dimuat, layanan **tetap berjalan** tetapi endpoint
 prediksi akan menolak permintaan dengan `503` — tidak pernah menghasilkan prediksi palsu.
@@ -138,11 +141,17 @@ Analisis sentimen satu teks ulasan.
 
 **Respons `200`**
 ```json
-{ "text": "aplikasinya bagus dan mudah dipakai", "label": "Positif" }
+{
+  "text": "aplikasinya bagus dan mudah dipakai",
+  "label": "Positif",
+  "confidence": { "Negatif": 18.4, "Positif": 81.6 }
+}
 ```
 
-> Output hanya berisi `label` (`Positif`/`Negatif`). Model SVM tanpa `probability=True`
-> tidak menghasilkan nilai kepercayaan, sehingga confidence tidak ditampilkan.
+> `confidence` = persentase keyakinan per label hasil `predict_proba` (0–100,
+> 1 desimal, dihitung independen sehingga total bisa 99.9/100.1). Label tetap
+> dari `predict()`; bila keduanya berbeda, persentase proba dikirim apa adanya.
+> Artefak model tanpa `probability=True` menghasilkan `confidence: null`.
 
 **Error**
 - `422` — teks kosong / field hilang / melebihi batas karakter.
@@ -171,8 +180,8 @@ jelek parah sering error
 {
   "total": 2,
   "results": [
-    { "row": 2, "label": "Positif" },
-    { "row": 3, "label": "Negatif" }
+    { "row": 2, "label": "Positif", "confidence": { "Negatif": 18.4, "Positif": 81.6 } },
+    { "row": 3, "label": "Negatif", "confidence": { "Negatif": 87.1, "Positif": 12.9 } }
   ],
   "skipped": []
 }
@@ -210,7 +219,7 @@ sesa_backend/
 │       ├── config.py            # konfigurasi via environment
 │       └── logging.py           # logging aman
 ├── data/                        # resource preprocessing lokal (kamus & stopword)
-├── model/                       # artefak model (di-gitignore, kecuali README)
+├── model/                       # artefak model sesa_model.joblib
 ├── scripts/
 │   └── export_model_colab.py    # skrip export artefak dari Colab
 ├── tests/                       # pengujian (pytest)

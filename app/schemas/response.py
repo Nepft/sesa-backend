@@ -15,6 +15,13 @@ class PredictTextResponse(BaseModel):
     label: str = Field(
         ..., description="Label sentimen hasil model: 'Positif' atau 'Negatif'."
     )
+    confidence: dict[str, float] | None = Field(
+        default=None,
+        description=(
+            "Persentase keyakinan per label (0-100, 1 desimal) dari "
+            "predict_proba; null bila model tidak menyediakan probabilitas."
+        ),
+    )
 
 
 class BatchResultItem(BaseModel):
@@ -22,6 +29,13 @@ class BatchResultItem(BaseModel):
 
     row: int = Field(..., description="Nomor baris (1-based) pada file CSV.")
     label: str = Field(..., description="Label sentimen hasil model.")
+    confidence: dict[str, float] | None = Field(
+        default=None,
+        description=(
+            "Persentase keyakinan per label (0-100, 1 desimal) dari "
+            "predict_proba; null bila model tidak menyediakan probabilitas."
+        ),
+    )
 
 
 class BatchSkippedItem(BaseModel):

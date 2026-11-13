@@ -55,12 +55,13 @@ def predict_text(
 ) -> PredictTextResponse:
     """Analisis sentimen satu teks ulasan.
 
-    Mengembalikan label 'Positif' atau 'Negatif' sesuai pemetaan model final.
+    Mengembalikan label 'Positif' atau 'Negatif' sesuai pemetaan model final,
+    beserta persentase confidence per label bila model menyediakannya.
     """
     logger.info("Request POST /predict diterima dari Flutter atau klien API")
     _ensure_model_ready(service)
     try:
-        label = service.predict_one(body.text)
+        prediction = service.predict_one(body.text)
     except ModelNotReadyError:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -73,7 +74,11 @@ def predict_text(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Terjadi kesalahan internal.",
         )
-    return PredictTextResponse(text=body.text, label=label)
+    return PredictTextResponse(
+        text=body.text,
+        label=prediction.label,
+        confidence=prediction.confidence,
+    )
 
 
 def _detect_delimiter(header_line: str) -> str:
@@ -162,9 +167,15 @@ def _parse_csv_text(
 
     results: list[BatchResultItem] = []
     if valid_texts:
-        labels = service.predict_many(valid_texts)
-        for row_number, label in zip(valid_rows, labels):
-            results.append(BatchResultItem(row=row_number, label=label))
+        predictions = service.predict_many(valid_texts)
+        for row_number, prediction in zip(valid_rows, predictions):
+            results.append(
+                BatchResultItem(
+                    row=row_number,
+                    label=prediction.label,
+                    confidence=prediction.confidence,
+                )
+            )
 
     return BatchPredictResponse(
         total=len(results), results=results, skipped=skipped

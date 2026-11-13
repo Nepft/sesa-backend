@@ -1,6 +1,8 @@
 """Pengujian endpoint prediksi batch CSV (/predict/batch)."""
 from __future__ import annotations
 
+import pytest
+
 from tests.conftest import csv_upload
 
 
@@ -17,6 +19,22 @@ def test_batch_success(client_with_model):
     assert [r["row"] for r in body["results"]] == [2, 3]
     for r in body["results"]:
         assert r["label"] in {"Positif", "Negatif"}
+
+
+def test_batch_results_include_confidence(client_with_model):
+    """Setiap baris hasil memuat persentase confidence per label."""
+    csv_content = "content\naplikasi bagus\n game jelek \n"
+    resp = client_with_model.post(
+        "/predict/batch", files=csv_upload(csv_content)
+    )
+    assert resp.status_code == 200
+    for item in resp.json()["results"]:
+        confidence = item["confidence"]
+        assert set(confidence.keys()) == {"Negatif", "Positif"}
+        for value in confidence.values():
+            assert 0.0 <= value <= 100.0
+            assert round(value, 1) == value
+        assert sum(confidence.values()) == pytest.approx(100, abs=0.15)
 
 
 def test_batch_skips_empty_rows(client_with_model):

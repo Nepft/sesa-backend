@@ -23,7 +23,7 @@ from app.services.preprocessing import TextPreprocessor
 # ---------------------------------------------------------------------------
 # Test double: model sintetis (BUKAN model produksi)
 # ---------------------------------------------------------------------------
-def _build_test_double_bundle(tmp_path):
+def _build_test_double_bundle(tmp_path, probability: bool = True):
     """Bangun bundle tiruan yang meniru struktur artefak produksi."""
     # Data sintetis sangat kecil: 'bagus' cenderung Positif, 'jelek' Negatif.
     train_texts = [
@@ -38,7 +38,8 @@ def _build_test_double_bundle(tmp_path):
 
     vectorizer = TfidfVectorizer(max_features=50)
     X = vectorizer.fit_transform(train_texts)
-    model = SVC(kernel="linear")
+    # probability=True meniru artefak produksi (SVC + Platt scaling).
+    model = SVC(kernel="linear", probability=probability)
     model.fit(X, train_labels)
 
     bundle = {
@@ -98,6 +99,21 @@ def client_without_model(tmp_path, monkeypatch):
 
     settings = get_settings()
     monkeypatch.setattr(settings, "model_path", tmp_path / "missing.joblib")
+
+    app = create_app()
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture()
+def client_with_model_no_proba(tmp_path, monkeypatch):
+    """Client dengan model tiruan tanpa probability (confidence null)."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    monkeypatch.setattr(
+        settings, "model_path", _build_test_double_bundle(tmp_path, probability=False)
+    )
 
     app = create_app()
     with TestClient(app) as c:
