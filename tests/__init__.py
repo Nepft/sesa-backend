@@ -1,1 +1,0 @@
-"""Paket pengujian SESA Backend."""

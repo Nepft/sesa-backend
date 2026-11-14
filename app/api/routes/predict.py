@@ -195,6 +195,7 @@ async def predict_batch(
     prediksi, dilengkapi nomor baris agar mudah dicocokkan dengan input. Baris
     yang kosong/tidak valid dilewati tanpa menggagalkan seluruh batch.
     """
+    logger.info("Request POST /predict/batch diterima dari Flutter atau klien API")
     _ensure_model_ready(service)
 
     settings = request.app.state.settings
