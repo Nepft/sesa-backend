@@ -14,8 +14,3 @@ pandas==2.2.3
 
 # Preprocessing teks bahasa Indonesia (sesuai eksperimen Colab)
 Sastrawi==1.0.1
-nltk==3.9.1
-
-# Pengujian
-pytest==8.3.4
-httpx==0.28.1

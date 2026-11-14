@@ -99,13 +99,18 @@ Server berjalan di `http://127.0.0.1:8000`. Dokumentasi interaktif (Swagger) ter
 
 ## Menjalankan Pengujian
 
+Berkas pengujian (`tests/`) hanya tersedia **lokal** dan tidak disertakan di repository.
+Dari root proyek:
+
 ```bash
 pytest
 ```
 
 Pengujian memakai **test double** (model sintetis kecil yang ditandai jelas bukan model
 produksi) untuk menguji plumbing API, serta menguji perilaku model gagal dimuat. Resource
-preprocessing (kamus & stopword) memakai berkas lokal yang sama dengan produksi.
+preprocessing (kamus & stopword) memakai berkas lokal yang sama dengan produksi. `pytest`
+dan `httpx` bukan kebutuhan production sehingga tidak ada di `requirements.txt` — bila
+venv dibangun ulang, pasang manual dengan `pip install pytest httpx`.
 
 ---
 
@@ -222,12 +227,10 @@ sesa_backend/
 ├── model/                       # artefak model sesa_model.joblib
 ├── scripts/
 │   └── export_model_colab.py    # skrip export artefak dari Colab
-├── tests/                       # pengujian (pytest)
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
-├── AGENT.md
-└── RULES.md
+└── .vercelignore
 ```
 
 ---
