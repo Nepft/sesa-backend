@@ -15,11 +15,10 @@ bukti kesetaraan dengan eksperimen (lihat RULES.md §2).
 """
 from __future__ import annotations
 
+import csv
 import re
 import threading
 from pathlib import Path
-
-import pandas as pd
 
 # ---------------------------------------------------------------------------
 # 1. CLEANING — regex & urutan identik dengan notebook
@@ -144,12 +143,24 @@ class TextPreprocessor:
     # -- pemuatan resource -------------------------------------------------
     @staticmethod
     def _load_kamus(path: Path) -> dict:
-        """Muas kamus kata tidak baku -> baku (format kolom ';' )."""
-        kamus_df = pd.read_csv(path, sep=";")
-        kamus_df = kamus_df.dropna(subset=["Kata Tidak Baku", "Kata Baku"])
-        tidak_baku = kamus_df["Kata Tidak Baku"].astype(str).str.strip()
-        baku = kamus_df["Kata Baku"].astype(str).str.strip()
-        return dict(zip(tidak_baku, baku))
+        """Muat kamus kata tidak baku -> baku (format kolom ';').
+
+        csv bawaan dipakai alih-alih pandas agar bundle Vercel ringan;
+        hasilnya identik dengan pd.read_csv + dropna + strip.
+        """
+        with Path(path).open(encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter=";")
+            required = {"Kata Tidak Baku", "Kata Baku"}
+            if not required.issubset(reader.fieldnames or ()):
+                raise ValueError(f"Kamus harus punya kolom {sorted(required)}")
+            kamus: dict = {}
+            for row in reader:
+                key = row.get("Kata Tidak Baku")
+                value = row.get("Kata Baku")
+                if not key or not value:
+                    continue
+                kamus[key.strip()] = value.strip()
+        return kamus
 
     @staticmethod
     def _load_stopwords(path: Path) -> set:
