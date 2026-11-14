@@ -36,4 +36,10 @@ nltk_data/
 .DS_Store
 Thumbs.db
 
+# Pengujian & dokumen kerja (lokal saja, tidak ikut repository/deploy)
+tests/
+AGENT.md
+AGENTS.md
+RULES.md
+
 .opencode/
