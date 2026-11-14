@@ -226,11 +226,13 @@ sesa_backend/
 ├── data/                        # resource preprocessing lokal (kamus & stopword)
 ├── model/                       # artefak model sesa_model.joblib
 ├── scripts/
-│   └── export_model_colab.py    # skrip export artefak dari Colab
+│   ├── export_model_colab.py    # skrip export artefak dari Colab
+│   └── vercel_prune.py          # build hook: pangkas site-packages saat deploy
 ├── requirements.txt
 ├── .env.example
 ├── .gitignore
-└── .vercelignore
+├── .vercelignore
+└── vercel.json
 ```
 
 ---
